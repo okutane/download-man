@@ -1,6 +1,8 @@
 package localdomain.localhost.downloader.core;
 
 
+import org.apache.http.client.HttpClient;
+
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
@@ -23,6 +25,7 @@ public class Downloader {
             for (Download download : downloads) {
                 URL url = download.getUrl();
                 try {
+                    HttpClient client =
                     URLConnection connection = openConnection(url);
                     connection.connect();
                     setDownloadState(download, Download.State.Running);
