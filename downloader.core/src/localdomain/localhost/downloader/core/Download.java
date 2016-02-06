@@ -8,6 +8,8 @@ import java.net.URL;
 public class Download {
     private final URL url;
     private State state = State.Stopped;
+    private long progress;
+    private long size;
 
     public Download(URL url) {
         this.url = url;
@@ -23,6 +25,10 @@ public class Download {
 
     public void setState(State state) {
         this.state = state;
+    }
+
+    public float getProgress() {
+        return size == 0 ? 0 : (float)progress / size;
     }
 
     public enum State {

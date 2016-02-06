@@ -14,22 +14,29 @@ import java.util.List;
 public class Downloader {
     private final File downloadDirectory;
     private final List<Download> downloads = new ArrayList<Download>();
+    private DownloaderEventHandler handler = new DownloaderEventHandler() {
+    };
 
     Thread scheduler = new Thread(new Runnable() {
         @Override
         public void run() {
             for (Download download : downloads) {
-                HttpClient
                 URL url = download.getUrl();
                 try {
                     URLConnection connection = openConnection(url);
                     connection.connect();
+                    setDownloadState(download, Download.State.Running);
                 } catch (IOException e) {
-                    download.setState(Download.State.Error);
+                    setDownloadState(download, Download.State.Error);
                 }
             }
         }
     });
+
+    private void setDownloadState(Download download, Download.State state) {
+        download.setState(state);
+        handler.downloadStateChanged(download);
+    }
 
     public Downloader(File downloadDirectory) {
         this.downloadDirectory = downloadDirectory;
@@ -37,6 +44,10 @@ public class Downloader {
 
     protected URLConnection openConnection(URL url) throws IOException {
         return url.openConnection();
+    }
+
+    public void setHandler(DownloaderEventHandler handler) {
+        this.handler = handler;
     }
 
     public Download createDownload(URL url) {
@@ -47,10 +58,17 @@ public class Downloader {
         return download;
     }
 
+    public List<Download> getDownloads() {
+        return downloads;
+    }
+
     public void startAll() {
         if (scheduler.getState() == Thread.State.NEW) {
             scheduler.run();
         }
+    }
+
+    public void stopAll() {
     }
 
     public void waitAll() throws InterruptedException {
