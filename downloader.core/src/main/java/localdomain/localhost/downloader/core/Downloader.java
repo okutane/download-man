@@ -83,7 +83,7 @@ public class Downloader {
                 }
             }
 
-            scheduler.run();
+            scheduler.start();
         }
     }
 

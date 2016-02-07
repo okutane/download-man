@@ -43,12 +43,13 @@ public class DownloadManager {
         downloader.setHandler(new DownloaderEventHandler() {
             @Override
             public void downloadStateChanged(Download download) {
-                tableModel.fireTableDataChanged();
+                SwingUtilities.invokeLater(tableModel::fireTableDataChanged);
             }
 
             @Override
             public void progressChanged(Download download) {
-                tableModel.fireTableDataChanged();
+                // todo lots of invocations here, maybe add throttling?
+                SwingUtilities.invokeLater(tableModel::fireTableDataChanged);
             }
         });
 
