@@ -47,7 +47,7 @@ class DownloadsTableModel extends AbstractTableModel {
             case 1:
                 return download.getState();
             case 2:
-                return download.getProgress();
+                return download.getCompletion();
         }
         return null;
     }

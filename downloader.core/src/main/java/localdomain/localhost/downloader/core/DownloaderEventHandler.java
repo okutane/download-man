@@ -6,4 +6,7 @@ package localdomain.localhost.downloader.core;
 public interface DownloaderEventHandler {
     default void downloadStateChanged(Download download) {
     }
+
+    default void progressChanged(Download download) {
+    }
 }

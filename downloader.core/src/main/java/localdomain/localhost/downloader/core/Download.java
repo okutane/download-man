@@ -1,21 +1,28 @@
 package localdomain.localhost.downloader.core;
 
-import java.net.URL;
-
 /**
+ * The primary entity in Downloader.
+ *
+ * The basic lifecycle for it is following:
+ * - New {@link Download} is added to {@link Downloader} is {@link State#New} state.
+ * - HEAD request is performed for {@link #url} so file name and size will be determined.
+ * -
+ *
  * @author <a href="mailto:dmitriy.matveev@odnoklassniki.ru">Dmitriy Matveev</a>
  */
 public class Download {
-    private final URL url;
-    private State state = State.Stopped;
+    private final String url;
+    private State state = State.New;
     private long progress;
     private long size;
+    private String filename;
+    private String message;
 
-    public Download(URL url) {
+    public Download(String url) {
         this.url = url;
     }
 
-    public URL getUrl() {
+    public String getUrl() {
         return url;
     }
 
@@ -27,11 +34,45 @@ public class Download {
         this.state = state;
     }
 
-    public float getProgress() {
-        return size == 0 ? 0 : (float)progress / size;
+    public long getProgress() {
+        return progress;
+    }
+
+    public void setProgress(long progress) {
+        this.progress = progress;
+    }
+
+    public float getCompletion() {
+        return size <= 0 ? 0 : (float)progress / size;
+    }
+
+    public long getSize() {
+        return size;
+    }
+
+    public void setSize(int size) {
+        this.size = size;
+    }
+
+    public String getFilename() {
+        return filename;
+    }
+
+    public void setFilename(String filename) {
+        this.filename = filename;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
     }
 
     public enum State {
+        New,
+        Ready,
         Stopped,
         Waiting,
         Running,

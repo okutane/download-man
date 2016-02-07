@@ -45,6 +45,11 @@ public class DownloadManager {
             public void downloadStateChanged(Download download) {
                 tableModel.fireTableDataChanged();
             }
+
+            @Override
+            public void progressChanged(Download download) {
+                tableModel.fireTableDataChanged();
+            }
         });
 
         JFrame frame = new JFrame("Download Manager");
@@ -67,11 +72,7 @@ public class DownloadManager {
             @Override
             public void actionPerformed(ActionEvent e) {
                 String url = JOptionPane.showInputDialog(frame, "URL to download from");
-                try {
-                    downloader.createDownload(new URL(url));
-                } catch (MalformedURLException e1) {
-                    JOptionPane.showMessageDialog(frame, e1.getMessage());
-                }
+                downloader.createDownload(url);
                 tableModel.fireTableDataChanged();
             }
         });

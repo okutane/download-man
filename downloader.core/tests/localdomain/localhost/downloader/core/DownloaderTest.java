@@ -24,7 +24,7 @@ public class DownloaderTest {
 
     @Test
     public void test404() throws Exception {
-        Download download = downloader.createDownload(new URL("https://v.ok.ru/contacts.html"));
+        Download download = downloader.createDownload("https://v.ok.ru/contacts.html");
 
         downloader.startAll();
         downloader.waitAll();
@@ -34,7 +34,7 @@ public class DownloaderTest {
 
     @Test
     public void testRefused() throws Exception {
-        Download download = downloader.createDownload(new URL("http://127.0.0.1"));
+        Download download = downloader.createDownload("http://127.0.0.1");
 
         downloader.startAll();
         downloader.waitAll();
