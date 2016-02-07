@@ -52,4 +52,13 @@ public class MultipartProgressTest {
         progress.addProgress(50, 100);
         assertEquals(0.5, progress.getProgress(), 0.01);
     }
+
+    @Test
+    public void testPrecision() {
+        MultipartProgress progress = new MultipartProgress(2);
+        progress.addProgress(1, 1);
+        assertEquals(0.5, progress.getProgress(), 0.01);
+        progress.addProgress(0, 1);
+        assertEquals(1.0, progress.getProgress(), 0.01);
+    }
 }
