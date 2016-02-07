@@ -51,8 +51,8 @@ public class Downloader {
         handler.downloadStateChanged(download);
     }
 
-    private void setProgress(Download download, long progress) {
-        download.setProgress(progress);
+    private void addProgress(Download download, long offset, int length) {
+        download.addProgress(offset, length);
         handler.progressChanged(download);
     }
 
@@ -144,9 +144,9 @@ public class Downloader {
                     try (RandomAccessFile raf = new RandomAccessFile(download.getFilename(), "rw")) {
                         raf.seek(offset);
                         raf.write(buffer, 0, bc);
+                        addProgress(download, offset, bc);
                         offset += bc;
                     }
-                    setProgress(download, offset);
                 }
             } while (bc != -1);
         } catch (IOException e) {
@@ -156,6 +156,11 @@ public class Downloader {
         }
     }
 
+    private void downloadPart(Download download, long from, Long to) {
+        // stub
+        HttpGet request = new HttpGet(download.getUrl());
+        request.addHeader("Range", "bytes=" + from + '-' + (to == null ? "" : to.toString())); // expect 206
+    }
 
     private void preallocateFile(String absolute, int contentLength) throws IOException {
         FileUtils.touch(new File(absolute));

@@ -13,8 +13,7 @@ package localdomain.localhost.downloader.core;
 public class Download {
     private final String url;
     private State state = State.New;
-    private long progress;
-    private long size;
+    private MultipartProgress progress;
     private String filename;
     private String message;
 
@@ -34,24 +33,16 @@ public class Download {
         this.state = state;
     }
 
-    public long getProgress() {
-        return progress;
+    public void addProgress(long offset, long length) {
+        progress.addProgress(offset, length);
     }
 
-    public void setProgress(long progress) {
-        this.progress = progress;
-    }
-
-    public float getCompletion() {
-        return size <= 0 ? 0 : (float)progress / size;
-    }
-
-    public long getSize() {
-        return size;
+    public double getCompletion() {
+        return progress == null ? 0 : progress.getProgress();
     }
 
     public void setSize(int size) {
-        this.size = size;
+        this.progress = new MultipartProgress(size);
     }
 
     public String getFilename() {
