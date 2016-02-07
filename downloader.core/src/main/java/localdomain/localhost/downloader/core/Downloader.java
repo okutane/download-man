@@ -2,7 +2,6 @@ package localdomain.localhost.downloader.core;
 
 
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
@@ -10,7 +9,6 @@ import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpHead;
 import org.apache.http.impl.client.HttpClients;
-import org.apache.http.util.EntityUtils;
 
 import java.io.File;
 import java.io.IOException;
@@ -30,7 +28,9 @@ public class Downloader {
     private final List<Download> downloads = new ArrayList<Download>();
     private final PriorityQueue<DownloadJob> priorityQueue = new PriorityQueue<>();
     HttpClient client = HttpClients.createDefault();
+
     private int bufferSize = 4096;
+    private int threadsNumber = Runtime.getRuntime().availableProcessors();
 
     private DownloaderEventHandler handler = new DownloaderEventHandler() {
     };
