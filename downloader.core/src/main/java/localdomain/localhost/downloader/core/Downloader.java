@@ -25,9 +25,10 @@ import java.util.function.Consumer;
  */
 public class Downloader {
     private final File downloadDirectory;
+    private final HttpClient client;
+
     private final List<Download> downloads = new ArrayList<Download>();
     private final PriorityQueue<DownloadJob> priorityQueue = new PriorityQueue<>();
-    HttpClient client = HttpClients.createDefault();
 
     private int bufferSize = 4096;
     private int threadsNumber = Runtime.getRuntime().availableProcessors();
@@ -56,7 +57,12 @@ public class Downloader {
     }
 
     public Downloader(File downloadDirectory) {
+        this(downloadDirectory, HttpClients.createDefault());
+    }
+
+    Downloader(File downloadDirectory, HttpClient httpClient) {
         this.downloadDirectory = downloadDirectory;
+        this.client = httpClient;
     }
 
     public void setHandler(DownloaderEventHandler handler) {
@@ -91,6 +97,11 @@ public class Downloader {
         HttpHead request = new HttpHead(download.getUrl());
         try {
             HttpResponse response = client.execute(request);
+
+            if (response.getStatusLine().getStatusCode() != 200) {
+                setDownloadState(download, Download.State.Error);
+                return;
+            }
 
             String filename = evaluateFilename(request, response);
 
