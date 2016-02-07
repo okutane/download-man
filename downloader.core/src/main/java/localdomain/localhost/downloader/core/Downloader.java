@@ -105,8 +105,8 @@ public class Downloader {
 
             String filename = evaluateFilename(request, response);
 
-            Header[] contentLengthHeader = response.getHeaders("Content-Length");
-            int contentLength = contentLengthHeader.length == 1 ? Integer.parseInt(contentLengthHeader[0].getValue()) : -1;
+            Header contentLengthHeader = response.getFirstHeader("Content-Length");
+            int contentLength = contentLengthHeader != null ? Integer.parseInt(contentLengthHeader.getValue()) : -1;
 
             synchronized (download) {
                 String absolute = new File(downloadDirectory, filename).getAbsolutePath();
@@ -149,6 +149,10 @@ public class Downloader {
                     }
                 }
             } while (bc != -1);
+
+            if (download.isComplete()) {
+                setDownloadState(download, Download.State.Finished);
+            }
         } catch (IOException e) {
             e.printStackTrace();
             download.setMessage(e.getMessage());

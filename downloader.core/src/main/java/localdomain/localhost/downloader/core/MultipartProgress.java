@@ -18,6 +18,10 @@ public class MultipartProgress {
         return parts.stream().mapToLong(p -> p.to - p.from).sum() / (double)size;
     }
 
+    public boolean isComplete() {
+        return parts.size() == 1 && parts.first().from == 0 && parts.first().to == size;
+    }
+
     public synchronized void addProgress(long offset, long length) {
         long from = offset;
         long to = offset + length;

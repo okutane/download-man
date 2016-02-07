@@ -41,6 +41,10 @@ public class Download {
         return progress == null ? 0 : progress.getProgress();
     }
 
+    public Boolean isComplete() {
+        return progress == null ? null : progress.isComplete();
+    }
+
     public void setSize(int size) {
         this.progress = new MultipartProgress(size);
     }
