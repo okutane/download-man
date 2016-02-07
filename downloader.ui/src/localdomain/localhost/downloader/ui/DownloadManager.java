@@ -32,7 +32,9 @@ public class DownloadManager {
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
             int progress = 0;
-            if (value instanceof Float) {
+            if (value instanceof Double) {
+                progress = (int)Math.round((Double) value * 100);
+            } else if (value instanceof Float) {
                 progress = Math.round(((Float) value) * 100f);
             } else if (value instanceof Integer) {
                 progress = (int) value;

@@ -14,11 +14,11 @@ public class MultipartProgress {
         this.size = size;
     }
 
-    public double getProgress() {
+    public synchronized double getProgress() {
         return parts.stream().mapToLong(p -> p.to - p.from).sum() / (double)size;
     }
 
-    public boolean isComplete() {
+    public synchronized boolean isComplete() {
         return parts.size() == 1 && parts.first().from == 0 && parts.first().to == size;
     }
 
