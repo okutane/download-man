@@ -27,7 +27,7 @@ public class Downloader {
     private final File downloadDirectory;
     private final HttpClient client;
 
-    private final List<Download> downloads = new ArrayList<Download>();
+    private final List<Download> downloads = new ArrayList<>();
     private final PriorityQueue<DownloadJob> priorityQueue = new PriorityQueue<>();
 
     private int bufferSize = 4096;
@@ -127,6 +127,7 @@ public class Downloader {
     }
 
     private void download(Download download) {
+        setDownloadState(download, Download.State.Running);
         HttpGet request = new HttpGet(download.getUrl());
         try {
             HttpResponse response = client.execute(request);

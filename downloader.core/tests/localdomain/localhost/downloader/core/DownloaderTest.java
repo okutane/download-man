@@ -1,21 +1,30 @@
 package localdomain.localhost.downloader.core;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.http.Header;
-import org.apache.http.HeaderElement;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
-import org.apache.http.ParseException;
 import org.apache.http.StatusLine;
+import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.conn.HttpHostConnectException;
 import org.apache.http.message.BasicHeader;
+import org.hamcrest.BaseMatcher;
+import org.hamcrest.Description;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Matchers;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.mock;
@@ -91,5 +100,62 @@ public class DownloaderTest {
         downloader.waitAll();
 
         assertEquals(Download.State.Finished, download.getState());
+        assertArrayEquals(content.getBytes(), FileUtils.readFileToByteArray(new File(tmpDirectory, "21262")));
     }
+
+    @Test
+    public void testMultipart() throws Exception {
+        byte[] data = new byte[15 * 1024 * 1024];
+        ThreadLocalRandom.current().nextBytes(data);
+
+        HttpResponse headResponse = mock(HttpResponse.class);
+        HttpResponse getResponse = mock(HttpResponse.class);
+        StatusLine statusLine = mock(StatusLine.class);
+        HttpEntity entity = mock(HttpEntity.class);
+
+        when(headResponse.getStatusLine()).thenReturn(statusLine);
+        when(headResponse.getFirstHeader("Content-Length"))
+                .thenReturn(new BasicHeader("Content-Length", String.valueOf(data.length)));
+        when(getResponse.getEntity()).thenReturn(entity);
+        when(entity.getContent()).thenReturn(new ByteArrayInputStream(data));
+        when(statusLine.getStatusCode()).thenReturn(200);
+
+        CyclicBarrier cb = new CyclicBarrier(2);
+        HttpClient client = new TestHttpClient() {
+            @Override
+            public HttpResponse execute(HttpUriRequest request) throws IOException {
+                if (request.getMethod().equals("HEAD")) {
+                    return headResponse;
+                }
+                if (request.getMethod().equals("GET")) {
+                    try {
+                        cb.await(2000, TimeUnit.MILLISECONDS);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    } catch (BrokenBarrierException | TimeoutException e) {
+                        fail(e.getMessage());
+                    }
+
+                    Header range = request.getFirstHeader("Range");
+                    if (range != null) {
+                        HttpResponse getPartResponse = mock(HttpResponse.class);
+                        return getPartResponse;
+                    }
+
+                    return getResponse;
+                }
+                return super.execute(request);
+            }
+        };
+
+        Downloader downloader = new Downloader(tmpDirectory, client);
+        Download download = downloader.createDownload("http://random.org/bytes.dat");
+
+        downloader.startAll();
+        downloader.waitAll();
+
+        assertEquals(Download.State.Finished, download.getState());
+        assertArrayEquals(data, FileUtils.readFileToByteArray(new File(tmpDirectory, "bytes.dat")));
+    }
+
 }
