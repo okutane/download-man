@@ -104,6 +104,60 @@ public class DownloaderTest {
     }
 
     @Test
+    public void testBrokenInTheMiddle() throws Exception {
+        byte[] data = new byte[15 * 1024 * 1024];
+        ThreadLocalRandom.current().nextBytes(data);
+
+        HttpResponse headResponse = mock(HttpResponse.class);
+        HttpResponse getResponse = mock(HttpResponse.class);
+        StatusLine statusLine = mock(StatusLine.class);
+        HttpEntity entity = mock(HttpEntity.class);
+
+        when(headResponse.getStatusLine()).thenReturn(statusLine);
+        when(headResponse.getFirstHeader("Content-Length"))
+                .thenReturn(new BasicHeader("Content-Length", String.valueOf(data.length)));
+        when(getResponse.getEntity()).thenReturn(entity);
+        when(entity.getContent()).thenReturn(new ByteArrayInputStream(data) {
+            @Override
+            public int read(byte[] b) throws IOException {
+                if (pos > data.length / 2) {
+                    throw new IOException();
+                }
+                return super.read(b);
+            }
+        });
+        when(statusLine.getStatusCode()).thenReturn(200);
+
+        HttpClient client = new TestHttpClient() {
+            @Override
+            public HttpResponse execute(HttpUriRequest request) throws IOException {
+                if (request.getMethod().equals("HEAD")) {
+                    return headResponse;
+                }
+                if (request.getMethod().equals("GET")) {
+                    Header range = request.getFirstHeader("Range");
+                    if (range != null) {
+                        HttpResponse getPartResponse = mock(HttpResponse.class);
+                        return getPartResponse;
+                    }
+
+                    return getResponse;
+                }
+                return super.execute(request);
+            }
+        };
+
+        Downloader downloader = new Downloader(tmpDirectory, client);
+        Download download = downloader.createDownload("http://random.org/bytes.dat");
+
+        downloader.startAll();
+        downloader.waitAll();
+
+        assertEquals(Download.State.Finished, download.getState());
+        assertArrayEquals(data, FileUtils.readFileToByteArray(new File(tmpDirectory, "bytes.dat")));
+    }
+
+    @Test
     public void testMultipart() throws Exception {
         byte[] data = new byte[15 * 1024 * 1024];
         ThreadLocalRandom.current().nextBytes(data);
