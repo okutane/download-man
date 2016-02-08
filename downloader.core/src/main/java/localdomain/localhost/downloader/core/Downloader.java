@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.PriorityQueue;
+import java.util.concurrent.Semaphore;
 import java.util.function.Consumer;
 
 /**
@@ -39,9 +40,9 @@ public class Downloader {
     Thread scheduler = new Thread(new Runnable() {
         @Override
         public void run() {
-            while (!priorityQueue.isEmpty()) {
-                DownloadJob poll = priorityQueue.poll();
-                poll.run();
+            while (!Thread.interrupted()) {
+                Runnable job = getJob();
+                job.run();
             }
         }
     });
@@ -83,14 +84,48 @@ public class Downloader {
 
     public void startAll() {
         if (scheduler.getState() == Thread.State.NEW) {
-            for (Download download : downloads) {
-                if (download.getState() == Download.State.New) {
-                    priorityQueue.add(new DownloadJob(download, this::prepare));
-                }
-            }
-
             scheduler.start();
         }
+    }
+
+    synchronized Runnable getJob() {
+        int minRunners = -1;
+        Download minReady = null;
+
+        for (Download download : downloads) {
+            switch (download.getState()) {
+                case New:
+                    setDownloadState(download, Download.State.Preparing);
+                    return new DownloadJob(download, this::prepare);
+                case Ready:
+                    int runnersCount = download.getRunnersCount().get();
+                    if (minRunners < runnersCount) {
+                        minRunners = runnersCount;
+                        minReady = download;
+                    }
+            }
+        }
+
+        if (minReady != null) {
+            minReady.getRunnersCount().incrementAndGet();
+            setDownloadState(minReady, Download.State.Running);
+            if (minReady.getAbsoluteCompletion() == 0) {
+                return new DownloadJob(minReady, this::download);
+            }
+            return new DownloadJob(minReady, d -> downloadPart(d, /*todo get from progress*/0, Long.MAX_VALUE));
+        }
+
+        // todo replace by wait/notify mechanism.
+        return new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ignore) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        };
     }
 
     private void prepare(Download download) {
@@ -127,44 +162,56 @@ public class Downloader {
     }
 
     private void download(Download download) {
-        setDownloadState(download, Download.State.Running);
-        HttpGet request = new HttpGet(download.getUrl());
+        Integer errorCount = null;
+
         try {
-            HttpResponse response = client.execute(request);
+            HttpGet request = new HttpGet(download.getUrl());
+            try {
+                HttpResponse response = client.execute(request);
 
-            HttpEntity entity = response.getEntity();
-            // todo long contentLength = entity.getContentLength();
-            InputStream content = entity.getContent();
+                HttpEntity entity = response.getEntity();
+                // todo long contentLength = entity.getContentLength();
+                InputStream content = entity.getContent();
 
-            byte[] buffer = new byte[bufferSize];
-            int offset = 0;
-            int bc;
-            do {
-                bc = content.read(buffer);
-                if (bc > 0) {
-                    try (RandomAccessFile raf = new RandomAccessFile(download.getFilename(), "rw")) {
-                        raf.seek(offset);
-                        raf.write(buffer, 0, bc);
-                        addProgress(download, offset, bc);
-                        offset += bc;
+                byte[] buffer = new byte[bufferSize];
+                int offset = 0;
+                int bc;
+                do {
+                    bc = content.read(buffer);
+                    if (bc > 0) {
+                        try (RandomAccessFile raf = new RandomAccessFile(download.getFilename(), "rw")) {
+                            raf.seek(offset);
+                            raf.write(buffer, 0, bc);
+                            addProgress(download, offset, bc);
+                            offset += bc;
+                        }
                     }
-                }
-            } while (bc != -1);
+                } while (bc != -1);
 
-            if (download.isComplete()) {
-                setDownloadState(download, Download.State.Finished);
+                if (download.isComplete()) {
+                    setDownloadState(download, Download.State.Finished);
+                }
+            } catch (IOException e) {
+                errorCount = download.getErrorCount().incrementAndGet();
+                download.setMessage(e.getMessage());
             }
-        } catch (IOException e) {
-            download.incrementErrorCount();
-            download.setMessage(e.getMessage());
-            setDownloadState(download, Download.State.Error);
+        } finally {
+            int runnersLeft = download.getRunnersCount().decrementAndGet();
+            if (runnersLeft == 0 && errorCount != null && errorCount > 5) {
+                setDownloadState(download, Download.State.Error);
+            }
         }
     }
 
     private void downloadPart(Download download, long from, Long to) {
-        // stub
-        HttpGet request = new HttpGet(download.getUrl());
-        request.addHeader("Range", "bytes=" + from + '-' + (to == null ? "" : to.toString())); // expect 206
+        try {
+            // stub
+            HttpGet request = new HttpGet(download.getUrl());
+            request.addHeader("Range", "bytes=" + from + '-' + (to == null ? "" : to.toString())); // expect 206
+        } finally {
+            download.getRunnersCount().decrementAndGet();
+            setDownloadState(download, Download.State.Error); /* todo because not implemented yet! */
+        }
     }
 
     private void preallocateFile(String absolute, int contentLength) throws IOException {
@@ -196,7 +243,14 @@ public class Downloader {
     }
 
     public void waitAll() throws InterruptedException {
-        scheduler.join();
+        try {
+            while (!Thread.interrupted() && downloads.stream().anyMatch(d -> d.getState() != Download.State.Error && d.getState() != Download.State.Finished)) {
+                Thread.sleep(1000);
+            }
+        } finally {
+            scheduler.interrupt();
+            scheduler.join();
+        }
     }
 
     private class DownloadJob implements Runnable, Comparable<DownloadJob> {

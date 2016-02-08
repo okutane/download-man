@@ -175,6 +175,8 @@ public class DownloaderTest {
         when(statusLine.getStatusCode()).thenReturn(200);
 
         CyclicBarrier cb = new CyclicBarrier(2);
+
+        Thread mainThread = Thread.currentThread();
         HttpClient client = new TestHttpClient() {
             @Override
             public HttpResponse execute(HttpUriRequest request) throws IOException {
@@ -184,10 +186,9 @@ public class DownloaderTest {
                 if (request.getMethod().equals("GET")) {
                     try {
                         cb.await(2000, TimeUnit.MILLISECONDS);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    } catch (BrokenBarrierException | TimeoutException e) {
+                    } catch (Exception e) {
                         fail(e.getMessage());
+                        mainThread.interrupt();
                     }
 
                     Header range = request.getFirstHeader("Range");

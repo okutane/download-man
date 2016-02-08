@@ -14,6 +14,10 @@ public class MultipartProgress {
         this.size = size;
     }
 
+    public synchronized long getAbsoluteProgress() {
+        return parts.stream().mapToLong(p -> p.to - p.from).sum();
+    }
+
     public synchronized double getProgress() {
         return parts.stream().mapToLong(p -> p.to - p.from).sum() / (double)size;
     }
