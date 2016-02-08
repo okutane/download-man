@@ -16,6 +16,7 @@ public class Download {
     private MultipartProgress progress;
     private String filename;
     private String message;
+    private volatile int errorCount = 0;
 
     public Download(String url) {
         this.url = url;
@@ -63,6 +64,10 @@ public class Download {
 
     public void setMessage(String message) {
         this.message = message;
+    }
+
+    public void incrementErrorCount() {
+        errorCount++;
     }
 
     public enum State {

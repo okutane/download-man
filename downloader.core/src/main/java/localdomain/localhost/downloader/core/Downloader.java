@@ -155,7 +155,7 @@ public class Downloader {
                 setDownloadState(download, Download.State.Finished);
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            download.incrementErrorCount();
             download.setMessage(e.getMessage());
             setDownloadState(download, Download.State.Error);
         }
