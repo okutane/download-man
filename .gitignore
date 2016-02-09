@@ -1,4 +1,7 @@
 out
 downloader.core/target
-.idea/libraries/
-.idea/workspace.xml
+.idea
+downloader.console/downloader.console.iml
+downloader.core/downloader.core.iml
+downloader.iml
+downloader.ui/downloader.ui.iml
