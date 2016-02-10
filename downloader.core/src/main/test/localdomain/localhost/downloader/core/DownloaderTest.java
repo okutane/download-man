@@ -174,9 +174,6 @@ public class DownloaderTest {
         when(entity.getContent()).thenReturn(new ByteArrayInputStream(data));
         when(statusLine.getStatusCode()).thenReturn(200);
 
-        CyclicBarrier cb = new CyclicBarrier(2);
-
-        Thread mainThread = Thread.currentThread();
         HttpClient client = new TestHttpClient() {
             @Override
             public HttpResponse execute(HttpUriRequest request) throws IOException {
@@ -184,16 +181,17 @@ public class DownloaderTest {
                     return headResponse;
                 }
                 if (request.getMethod().equals("GET")) {
-                    try {
-                        cb.await(2000, TimeUnit.MILLISECONDS);
-                    } catch (Exception e) {
-                        fail(e.getMessage());
-                        mainThread.interrupt();
-                    }
-
                     Header range = request.getFirstHeader("Range");
                     if (range != null) {
+                        String[] parts = range.getValue().substring("bytes=".length()).split("-");
+                        int offset = Integer.parseInt(parts[0]);
+                        int length = Integer.parseInt(parts[1]) - offset;
+
                         HttpResponse getPartResponse = mock(HttpResponse.class);
+                        HttpEntity getPartEntity = mock(HttpEntity.class);
+                        when(getPartResponse.getEntity()).thenReturn(getPartEntity);
+                        when(getPartEntity.getContent()).thenReturn(new ByteArrayInputStream(data, offset, length));
+
                         return getPartResponse;
                     }
 
@@ -209,7 +207,7 @@ public class DownloaderTest {
         downloader.startAll();
         downloader.waitAll();
 
-        assertEquals(Download.State.Finished, download.getState());
+        assertEquals(data.length, download.getAbsoluteCompletion());
         assertArrayEquals(data, FileUtils.readFileToByteArray(new File(tmpDirectory, "bytes.dat")));
     }
 

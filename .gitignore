@@ -1,5 +1,7 @@
 out
 downloader.core/target
+downloader.ui/target
+downloader.console/target
 .idea
 downloader.console/downloader.console.iml
 downloader.core/downloader.core.iml

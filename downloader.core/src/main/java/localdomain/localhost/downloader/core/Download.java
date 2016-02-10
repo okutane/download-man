@@ -1,7 +1,5 @@
 package localdomain.localhost.downloader.core;
 
-import java.util.concurrent.atomic.AtomicInteger;
-
 /**
  * The primary entity in Downloader.
  *
@@ -18,9 +16,6 @@ public class Download {
     private MultipartProgress progress;
     private String filename;
     private String message;
-
-    private AtomicInteger errorCount = new AtomicInteger(0);
-    private AtomicInteger runnersCount = new AtomicInteger(0);
 
     public Download(String url) {
         this.url = url;
@@ -40,6 +35,10 @@ public class Download {
 
     public void addProgress(long offset, long length) {
         progress.addProgress(offset, length);
+    }
+
+    public long getSize() {
+        return progress == null ? -1 : progress.getSize();
     }
 
     public long getAbsoluteCompletion() {
@@ -72,14 +71,6 @@ public class Download {
 
     public void setMessage(String message) {
         this.message = message;
-    }
-
-    public AtomicInteger getErrorCount() {
-        return errorCount;
-    }
-
-    public AtomicInteger getRunnersCount() {
-        return runnersCount;
     }
 
     public enum State {
