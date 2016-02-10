@@ -27,6 +27,7 @@ import java.util.concurrent.TimeUnit;
  * @author <a href="mailto:dmitriy.matveev@odnoklassniki.ru">Dmitriy Matveev</a>
  */
 public class Downloader {
+    public static final int UNKNOWN_SIZE = -1;
     private final File downloadDirectory;
     private final HttpClient client;
 
@@ -98,7 +99,7 @@ public class Downloader {
             String filename = evaluateFilename(request, response);
 
             Header contentLengthHeader = response.getFirstHeader("Content-Length");
-            int contentLength = contentLengthHeader != null ? Integer.parseInt(contentLengthHeader.getValue()) : -1;
+            int contentLength = contentLengthHeader != null ? Integer.parseInt(contentLengthHeader.getValue()) : UNKNOWN_SIZE;
 
             synchronized (download) {
                 String absolute = new File(downloadDirectory, filename).getAbsolutePath();
@@ -229,7 +230,7 @@ public class Downloader {
                 return;
             }
 
-            if (download.getSize() == -1 || true) {
+            if (download.getSize() == UNKNOWN_SIZE) {
                 // size is unknown, download sequentially.
                 try {
                     download(download);
