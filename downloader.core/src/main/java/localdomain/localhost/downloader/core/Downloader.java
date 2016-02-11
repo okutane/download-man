@@ -12,6 +12,8 @@ import org.apache.http.client.methods.HttpHead;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.execchain.RequestAbortedException;
 import org.apache.http.protocol.BasicHttpContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -31,6 +33,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class Downloader {
     public static final int UNKNOWN_SIZE = -1;
+    private static Logger logger = LoggerFactory.getLogger(Downloader.class);
     private final File downloadDirectory;
     private final HttpClient client;
 
@@ -65,12 +68,15 @@ public class Downloader {
             pool.shutdownNow();
         }
         pool = new ForkJoinPool(threadsNumber);
-        startAll();
+        restartAll();
 
         this.threadsNumber = threadsNumber;
     }
 
     private void setDownloadState(Download download, Download.State state) {
+        if (logger.isInfoEnabled()) {
+            logger.info(download.getUrl() + " -> " + state);
+        }
         download.setState(state);
         handler.downloadStateChanged(download);
     }
@@ -105,6 +111,13 @@ public class Downloader {
 
     public List<Download> getDownloads() {
         return downloads;
+    }
+
+    public void restartAll() {
+        if (!running) {
+            return;
+        }
+        downloads.stream().filter(d -> d.getState() == Download.State.Ready || d.getState() == Download.State.New).forEach(d -> pool.execute(new DownloadJob(d)));
     }
 
     public void startAll() {
@@ -143,6 +156,7 @@ public class Downloader {
                 setDownloadState(download, Download.State.Ready);
             }
         } catch (IOException e) {
+            logger.warn(download.getUrl(), e);
             download.setMessage(e.getLocalizedMessage());
             setDownloadState(download, Download.State.Error);
         }
@@ -255,6 +269,7 @@ public class Downloader {
 
     public void stopAll() {
         pool.shutdownNow();
+        pool = new ForkJoinPool(threadsNumber);
         running = false;
     }
 
@@ -295,6 +310,7 @@ public class Downloader {
                     try {
                         download(download);
                     } catch (DownloadFailedException e) {
+                        logger.warn(download.getUrl(), e);
                         setDownloadState(download, Download.State.Error);
                     }
                     return;
@@ -322,7 +338,11 @@ public class Downloader {
                 if (to - from <= minPartSize) {
                     try {
                         downloadPart(download, from, to);
+                        if (logger.isInfoEnabled()) {
+                            logger.info(download.getUrl() + ": " + from + "-" + to + " downloaded.");
+                        }
                     } catch (DownloadFailedException e) {
+                        logger.warn(download.getUrl(), e);
                         setDownloadState(download, Download.State.Error);
                     }
                     return;
