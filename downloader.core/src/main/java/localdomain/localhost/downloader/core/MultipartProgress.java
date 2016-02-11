@@ -25,7 +25,8 @@ public class MultipartProgress {
     }
 
     public synchronized double getProgress() {
-        return parts.stream().mapToLong(p -> p.to - p.from).sum() / (double)size;
+        long absoluteProgress = getAbsoluteProgress();
+        return absoluteProgress == 0 ? 0.0 : absoluteProgress / (double)size;
     }
 
     public synchronized boolean isComplete() {

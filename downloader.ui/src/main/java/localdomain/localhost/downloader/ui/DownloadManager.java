@@ -52,6 +52,8 @@ public class DownloadManager {
             }
         });
 
+        downloader.startAll(); // download queue is empty, but it's more convenient.
+
         JFrame frame = new JFrame("Download Manager");
         frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
 
@@ -66,6 +68,12 @@ public class DownloadManager {
 
         frame.pack();
         frame.setVisible(true);
+        Runtime.getRuntime().addShutdownHook(new Thread() {
+            @Override
+            public void run() {
+                downloader.stopAll();
+            }
+        });
     }
 
     private static JMenuBar createMenu(final Downloader downloader, final AbstractTableModel tableModel, final JFrame frame) {
@@ -95,18 +103,7 @@ public class DownloadManager {
         JMenuItem exitMenuItem = new JMenuItem("Exit");
         exitMenuItem.setMnemonic(KeyEvent.VK_E);
         exitMenuItem.setToolTipText("Exit application");
-        exitMenuItem.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                downloader.stopAll();
-                try {
-                    downloader.waitAll();
-                } catch (InterruptedException e1) {
-                    e1.printStackTrace();
-                }
-                System.exit(0);
-            }
-        });
+        exitMenuItem.addActionListener(e -> System.exit(0));
 
         file.add(addMenuItem);
         file.addSeparator();

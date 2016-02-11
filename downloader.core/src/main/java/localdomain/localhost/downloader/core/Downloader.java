@@ -33,6 +33,7 @@ public class Downloader {
 
     private final List<Download> downloads = new ArrayList<>();
 
+    private boolean running = false;
     private int maxRetryCount = 5;
     private int bufferSize = 4096 * 10;
     private long minPartSize = 10 * 1024 * 1024;
@@ -85,6 +86,10 @@ public class Downloader {
 
         downloads.add(download);
 
+        if (running) {
+            pool.invoke(new DownloadJob(download));
+        }
+
         return download;
     }
 
@@ -93,7 +98,11 @@ public class Downloader {
     }
 
     public void startAll() {
-        downloads.stream().filter(d -> d.getState() != Download.State.Error).forEach(d -> pool.execute(new DownloadJob(d)));
+        if (running) {
+            downloads.stream().filter(d -> d.getState() == Download.State.Error).forEach(d -> pool.execute(new DownloadJob(d)));
+        } else {
+            downloads.stream().filter(d -> d.getState() != Download.State.Finished).forEach(d -> pool.execute(new DownloadJob(d)));
+        }
     }
 
     private void prepare(Download download) {
@@ -218,12 +227,15 @@ public class Downloader {
     }
 
     public void stopAll() {
+        pool.shutdownNow();
+        running = false;
     }
 
     public void waitAll() throws InterruptedException {
         pool.shutdown();
         while (!pool.awaitTermination(500, TimeUnit.MILLISECONDS)) {
         }
+        running = false;
     }
 
     private class DownloadJob extends RecursiveAction {
@@ -293,5 +305,10 @@ public class Downloader {
                 invokeAll(new DownloadPartJob(from, mid), new DownloadPartJob(mid, to));
             }
         }
+    }
+
+    private enum DownloaderState {
+        Stopped,
+        Running,
     }
 }

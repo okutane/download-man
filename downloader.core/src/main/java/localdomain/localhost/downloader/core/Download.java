@@ -81,11 +81,7 @@ public class Download {
 
     public enum State {
         New,
-        Preparing,
         Ready,
-        Stopped,
-        Waiting,
-        Running,
         Finished,
         Error
     }
