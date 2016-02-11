@@ -1,6 +1,8 @@
 package localdomain.localhost.downloader.core;
 
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.TreeSet;
 
 /**
@@ -14,8 +16,20 @@ public class MultipartProgress {
         this.size = size;
     }
 
-    public double getProgress() {
+    public long getSize() {
+        return size;
+    }
+
+    public synchronized long getAbsoluteProgress() {
+        return parts.stream().mapToLong(p -> p.to - p.from).sum();
+    }
+
+    public synchronized double getProgress() {
         return parts.stream().mapToLong(p -> p.to - p.from).sum() / (double)size;
+    }
+
+    public synchronized boolean isComplete() {
+        return parts.size() == 1 && parts.first().from == 0 && parts.first().to == size;
     }
 
     public synchronized void addProgress(long offset, long length) {
@@ -47,7 +61,23 @@ public class MultipartProgress {
         parts.add(new ProgressPart(from, to));
     }
 
-    private static class ProgressPart implements Comparable<ProgressPart> {
+    public synchronized List<ProgressPart> getMissingParts() {
+        List<ProgressPart> result = new ArrayList<>();
+
+        long from = 0;
+        for (ProgressPart part : parts) {
+            result.add(new ProgressPart(from, part.from));
+            from = part.to;
+        }
+
+        if (from != size) {
+            result.add(new ProgressPart(from, size));
+        }
+
+        return result;
+    }
+
+    public static class ProgressPart implements Comparable<ProgressPart> {
         private final long from;
         private final long to;
 
@@ -56,9 +86,41 @@ public class MultipartProgress {
             this.to = to;
         }
 
+        public long getFrom() {
+            return from;
+        }
+
+        public long getTo() {
+            return to;
+        }
+
         @Override
         public int compareTo(ProgressPart o) {
             return Long.compare(from, o.from);
+        }
+
+        @Override
+        public String toString() {
+            return "[" + from + ", " + to + ')';
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            ProgressPart that = (ProgressPart) o;
+
+            if (from != that.from) return false;
+            return to == that.to;
+
+        }
+
+        @Override
+        public int hashCode() {
+            int result = (int) (from ^ (from >>> 32));
+            result = 31 * result + (int) (to ^ (to >>> 32));
+            return result;
         }
     }
 }

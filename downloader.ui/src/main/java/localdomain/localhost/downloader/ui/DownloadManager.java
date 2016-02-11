@@ -4,16 +4,7 @@ import localdomain.localhost.downloader.core.Download;
 import localdomain.localhost.downloader.core.Downloader;
 import localdomain.localhost.downloader.core.DownloaderEventHandler;
 
-import javax.swing.JFrame;
-import javax.swing.JMenu;
-import javax.swing.JMenuBar;
-import javax.swing.JMenuItem;
-import javax.swing.JOptionPane;
-import javax.swing.JProgressBar;
-import javax.swing.JScrollPane;
-import javax.swing.JTable;
-import javax.swing.SwingUtilities;
-import javax.swing.WindowConstants;
+import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.TableCellRenderer;
 import java.awt.Component;
@@ -26,13 +17,16 @@ import java.io.File;
  * @author <a href="mailto:dmitriy.matveev@odnoklassniki.ru">Dmitriy Matveev</a>
  */
 public class DownloadManager {
+    private static Downloader downloader = new Downloader(new File(System.getProperty("user.home"), "Downloads"));
 
     public static class ProgressCellRender extends JProgressBar implements TableCellRenderer {
 
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
             int progress = 0;
-            if (value instanceof Float) {
+            if (value instanceof Double) {
+                progress = (int)Math.round((Double) value * 100);
+            } else if (value instanceof Float) {
                 progress = Math.round(((Float) value) * 100f);
             } else if (value instanceof Integer) {
                 progress = (int) value;
@@ -43,8 +37,6 @@ public class DownloadManager {
     }
 
     public static void main(String... args) {
-        Downloader downloader = new Downloader(new File(System.getProperty("user.home"), "Downloads"));
-
         AbstractTableModel tableModel = new DownloadsTableModel(downloader);
 
         downloader.setHandler(new DownloaderEventHandler() {
@@ -68,6 +60,15 @@ public class DownloadManager {
 
         frame.add(new JScrollPane(table));
 
+        JMenuBar menubar = createMenu(downloader, tableModel, frame);
+
+        frame.setJMenuBar(menubar);
+
+        frame.pack();
+        frame.setVisible(true);
+    }
+
+    private static JMenuBar createMenu(final Downloader downloader, final AbstractTableModel tableModel, final JFrame frame) {
         JMenuBar menubar = new JMenuBar();
 
         JMenu file = new JMenu("File");
@@ -116,10 +117,24 @@ public class DownloadManager {
 
         menubar.add(file);
 
-        frame.setJMenuBar(menubar);
+        JMenu performance = new JMenu("Performance");
 
-        frame.pack();
-        frame.setVisible(true);
+        JMenu threads = new JMenu("Threads");
+        ButtonGroup group = new ButtonGroup();
+        int defaultThreads = Runtime.getRuntime().availableProcessors();
+        int maxThreads = Runtime.getRuntime().availableProcessors() * 2;
+        for (int i = 1; i <= maxThreads; i++) {
+            final int threadsNumber = i;
+            JRadioButtonMenuItem threadsOption = new JRadioButtonMenuItem(Integer.toString(i), i == defaultThreads);
+            threadsOption.addActionListener(e -> downloader.setThreadsNumber(threadsNumber));
+            group.add(threadsOption);
+            threads.add(threadsOption);
+        }
+        performance.add(threads);
+
+        menubar.add(performance);
+
+        return menubar;
     }
 
 }

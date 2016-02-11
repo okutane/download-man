@@ -1,5 +1,7 @@
 package localdomain.localhost.downloader.core;
 
+import java.util.List;
+
 /**
  * The primary entity in Downloader.
  *
@@ -13,8 +15,7 @@ package localdomain.localhost.downloader.core;
 public class Download {
     private final String url;
     private State state = State.New;
-    private long progress;
-    private long size;
+    private MultipartProgress progress;
     private String filename;
     private String message;
 
@@ -34,24 +35,32 @@ public class Download {
         this.state = state;
     }
 
-    public long getProgress() {
-        return progress;
-    }
-
-    public void setProgress(long progress) {
-        this.progress = progress;
-    }
-
-    public float getCompletion() {
-        return size <= 0 ? 0 : (float)progress / size;
+    public void addProgress(long offset, long length) {
+        progress.addProgress(offset, length);
     }
 
     public long getSize() {
-        return size;
+        return progress == null ? -1 : progress.getSize();
+    }
+
+    public long getAbsoluteCompletion() {
+        return progress == null ? 0 : progress.getAbsoluteProgress();
+    }
+
+    public double getCompletion() {
+        return progress == null ? 0.0 : progress.getProgress();
+    }
+
+    public Boolean isComplete() {
+        return progress == null ? null : progress.isComplete();
+    }
+
+    public List<MultipartProgress.ProgressPart> getMissingParts() {
+        return progress.getMissingParts();
     }
 
     public void setSize(int size) {
-        this.size = size;
+        this.progress = new MultipartProgress(size);
     }
 
     public String getFilename() {
@@ -72,6 +81,7 @@ public class Download {
 
     public enum State {
         New,
+        Preparing,
         Ready,
         Stopped,
         Waiting,

@@ -2,6 +2,8 @@ package localdomain.localhost.downloader.core;
 
 import org.junit.Test;
 
+import java.util.Arrays;
+
 import static org.junit.Assert.*;
 
 /**
@@ -60,5 +62,26 @@ public class MultipartProgressTest {
         assertEquals(0.5, progress.getProgress(), 0.01);
         progress.addProgress(0, 1);
         assertEquals(1.0, progress.getProgress(), 0.01);
+    }
+
+    @Test
+    public void testMissingParts() {
+        MultipartProgress progress = new MultipartProgress(200);
+        assertEquals(Arrays.asList(
+                new MultipartProgress.ProgressPart(0, 200)
+        ), progress.getMissingParts());
+
+        progress.addProgress(50, 100);
+
+        assertEquals(Arrays.asList(
+                new MultipartProgress.ProgressPart(0, 50),
+                new MultipartProgress.ProgressPart(150, 200)
+        ), progress.getMissingParts());
+
+        progress.addProgress(150, 50);
+
+        assertEquals(Arrays.asList(
+                new MultipartProgress.ProgressPart(0, 50)
+        ), progress.getMissingParts());
     }
 }
