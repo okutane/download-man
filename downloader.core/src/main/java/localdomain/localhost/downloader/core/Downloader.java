@@ -10,12 +10,15 @@ import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpHead;
 import org.apache.http.impl.client.HttpClients;
+import org.apache.http.impl.execchain.RequestAbortedException;
 import org.apache.http.protocol.BasicHttpContext;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -81,13 +84,20 @@ public class Downloader {
         this.handler = handler;
     }
 
-    public Download createDownload(String url) {
+    public Download createDownload(String url) throws DownloadCreationException {
+        // validation
+        try {
+            URI uri = new URI(url);
+        } catch (URISyntaxException e) {
+            throw new DownloadCreationException(e);
+        }
+
         Download download = new Download(url);
 
         downloads.add(download);
 
         if (running) {
-            pool.invoke(new DownloadJob(download));
+            pool.execute(new DownloadJob(download));
         }
 
         return download;
@@ -103,6 +113,7 @@ public class Downloader {
         } else {
             downloads.stream().filter(d -> d.getState() != Download.State.Finished).forEach(d -> pool.execute(new DownloadJob(d)));
         }
+        running = true;
     }
 
     private void prepare(Download download) {
@@ -137,28 +148,41 @@ public class Downloader {
         }
     }
 
-    private void download(Download download) throws IOException {
-        HttpGet request = new HttpGet(download.getUrl());
-        HttpResponse response = client.execute(request);
+    private void download(Download download) throws DownloadFailedException {
+        int tryCount = 0;
+        while (true) {
+            try {
+                HttpGet request = new HttpGet(download.getUrl());
+                HttpResponse response = client.execute(request);
 
-        HttpEntity entity = response.getEntity();
-        // todo long contentLength = entity.getContentLength();
-        InputStream content = entity.getContent();
+                HttpEntity entity = response.getEntity();
+                // todo long contentLength = entity.getContentLength();
+                InputStream content = entity.getContent();
 
-        byte[] buffer = new byte[bufferSize];
-        int offset = 0;
-        int bc;
-        do {
-            bc = content.read(buffer);
-            if (bc > 0) {
-                try (RandomAccessFile raf = new RandomAccessFile(download.getFilename(), "rw")) {
-                    raf.seek(offset);
-                    raf.write(buffer, 0, bc);
-                    addProgress(download, offset, bc);
-                    offset += bc;
+                byte[] buffer = new byte[bufferSize];
+                int offset = 0;
+                int bc;
+                do {
+                    bc = content.read(buffer);
+                    if (bc > 0) {
+                        try (RandomAccessFile raf = new RandomAccessFile(download.getFilename(), "rw")) {
+                            raf.seek(offset);
+                            raf.write(buffer, 0, bc);
+                            addProgress(download, offset, bc);
+                            offset += bc;
+                        }
+                    }
+                } while (bc != -1);
+            } catch (RequestAbortedException ignored) {
+                // probably pool resize
+                return;
+            } catch (IOException e) {
+                if (tryCount++ < maxRetryCount) {
+                    continue;
                 }
+                throw new DownloadFailedException(e);
             }
-        } while (bc != -1);
+        }
     }
 
     private void downloadPart(Download download, long from, Long to) throws DownloadFailedException {
@@ -192,6 +216,9 @@ public class Downloader {
                 } finally {
                     response.close();
                 }
+            } catch (RequestAbortedException ignored) {
+                // probably pool resize
+                return;
             } catch (IOException e) {
                 if (tryCount++ < maxRetryCount) {
                     continue;
@@ -267,8 +294,8 @@ public class Downloader {
                     // size is unknown, download sequentially.
                     try {
                         download(download);
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
+                    } catch (DownloadFailedException e) {
+                        setDownloadState(download, Download.State.Error);
                     }
                     return;
                 }
@@ -305,10 +332,5 @@ public class Downloader {
                 invokeAll(new DownloadPartJob(from, mid), new DownloadPartJob(mid, to));
             }
         }
-    }
-
-    private enum DownloaderState {
-        Stopped,
-        Running,
     }
 }

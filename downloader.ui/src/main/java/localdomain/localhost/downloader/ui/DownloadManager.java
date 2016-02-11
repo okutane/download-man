@@ -1,6 +1,7 @@
 package localdomain.localhost.downloader.ui;
 
 import localdomain.localhost.downloader.core.Download;
+import localdomain.localhost.downloader.core.DownloadCreationException;
 import localdomain.localhost.downloader.core.Downloader;
 import localdomain.localhost.downloader.core.DownloaderEventHandler;
 
@@ -89,8 +90,12 @@ public class DownloadManager {
             @Override
             public void actionPerformed(ActionEvent e) {
                 String url = JOptionPane.showInputDialog(frame, "URL to download from");
-                downloader.createDownload(url);
-                tableModel.fireTableDataChanged();
+                try {
+                    downloader.createDownload(url.trim());
+                    tableModel.fireTableDataChanged();
+                } catch (DownloadCreationException e1) {
+                    JOptionPane.showMessageDialog(frame, "Bad URL");
+                }
             }
         });
 
