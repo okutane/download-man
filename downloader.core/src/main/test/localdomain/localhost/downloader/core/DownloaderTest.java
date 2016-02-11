@@ -5,13 +5,12 @@ import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.StatusLine;
-import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.conn.HttpHostConnectException;
 import org.apache.http.message.BasicHeader;
-import org.hamcrest.BaseMatcher;
-import org.hamcrest.Description;
+import org.apache.http.protocol.HttpContext;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Matchers;
@@ -20,13 +19,10 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.concurrent.BrokenBarrierException;
-import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -79,13 +75,14 @@ public class DownloaderTest {
     public void testOk() throws Exception {
         HttpClient client = mock(HttpClient.class);
         HttpResponse headResponse = mock(HttpResponse.class);
-        HttpResponse getResponse = mock(HttpResponse.class);
+        HttpResponse getResponse = mock(CloseableHttpResponse.class);
         StatusLine statusLine = mock(StatusLine.class);
         HttpEntity entity = mock(HttpEntity.class);
 
         String content = "Hello, Mr. Matveev. We're fixed this bug";
 
-        when(client.execute(Matchers.any())).thenReturn(headResponse, getResponse);
+        when(client.execute(Matchers.any())).thenReturn(headResponse);
+        when(client.execute(Matchers.any(), Matchers.<HttpContext>any())).thenReturn(getResponse);
         when(headResponse.getStatusLine()).thenReturn(statusLine);
         when(headResponse.getFirstHeader("Content-Length"))
                 .thenReturn(new BasicHeader("Content-Length", String.valueOf(content.getBytes().length)));
@@ -107,6 +104,7 @@ public class DownloaderTest {
     public void testBrokenInTheMiddle() throws Exception {
         byte[] data = new byte[15 * 1024 * 1024];
         ThreadLocalRandom.current().nextBytes(data);
+        int[] errorCount = new int[1];
 
         HttpResponse headResponse = mock(HttpResponse.class);
         HttpResponse getResponse = mock(HttpResponse.class);
@@ -121,6 +119,7 @@ public class DownloaderTest {
             @Override
             public int read(byte[] b) throws IOException {
                 if (pos > data.length / 2) {
+                    errorCount[0]++;
                     throw new IOException();
                 }
                 return super.read(b);
@@ -137,7 +136,24 @@ public class DownloaderTest {
                 if (request.getMethod().equals("GET")) {
                     Header range = request.getFirstHeader("Range");
                     if (range != null) {
-                        HttpResponse getPartResponse = mock(HttpResponse.class);
+                        String[] parts = range.getValue().substring("bytes=".length()).split("-");
+                        int offset = Integer.parseInt(parts[0]);
+                        int length = Integer.parseInt(parts[1]) - offset;
+
+                        HttpResponse getPartResponse = mock(CloseableHttpResponse.class);
+                        HttpEntity getPartEntity = mock(HttpEntity.class);
+                        when(getPartResponse.getEntity()).thenReturn(getPartEntity);
+                        when(getPartEntity.getContent()).thenReturn(new ByteArrayInputStream(data, offset, length) {
+                            @Override
+                            public int read(byte[] b) throws IOException {
+                                if (pos > data.length / 2 && errorCount[0] == 0) {
+                                    errorCount[0]++;
+                                    throw new IOException();
+                                }
+                                return super.read(b);
+                            }
+                        });
+
                         return getPartResponse;
                     }
 
@@ -153,7 +169,8 @@ public class DownloaderTest {
         downloader.startAll();
         downloader.waitAll();
 
-        assertEquals(Download.State.Finished, download.getState());
+        assertEquals("errors thrown", 1, errorCount[0]);
+        assertEquals(data.length, download.getAbsoluteCompletion());
         assertArrayEquals(data, FileUtils.readFileToByteArray(new File(tmpDirectory, "bytes.dat")));
     }
 
@@ -187,7 +204,7 @@ public class DownloaderTest {
                         int offset = Integer.parseInt(parts[0]);
                         int length = Integer.parseInt(parts[1]) - offset;
 
-                        HttpResponse getPartResponse = mock(HttpResponse.class);
+                        HttpResponse getPartResponse = mock(CloseableHttpResponse.class);
                         HttpEntity getPartEntity = mock(HttpEntity.class);
                         when(getPartResponse.getEntity()).thenReturn(getPartEntity);
                         when(getPartEntity.getContent()).thenReturn(new ByteArrayInputStream(data, offset, length));

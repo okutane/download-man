@@ -33,14 +33,15 @@ public class Downloader {
 
     private final List<Download> downloads = new ArrayList<>();
 
+    private int maxRetryCount = 5;
     private int bufferSize = 4096 * 10;
     private long minPartSize = 10 * 1024 * 1024;
-    private int threadsNumber = Runtime.getRuntime().availableProcessors();
+    private int threadsNumber;
 
     private DownloaderEventHandler handler = new DownloaderEventHandler() {
     };
 
-    ForkJoinPool pool = new ForkJoinPool(threadsNumber);
+    ForkJoinPool pool;
 
     public Downloader(File downloadDirectory) {
         this(downloadDirectory, HttpClients.createDefault());
@@ -49,13 +50,16 @@ public class Downloader {
     Downloader(File downloadDirectory, HttpClient httpClient) {
         this.downloadDirectory = downloadDirectory;
         this.client = httpClient;
+        setThreadsNumber(Runtime.getRuntime().availableProcessors());
     }
 
     public void setThreadsNumber(int threadsNumber) {
-        if (threadsNumber == this.threadsNumber) {
-            return;
+        if (pool != null) {
+            if (threadsNumber == this.threadsNumber) {
+                return;
+            }
+            pool.shutdownNow();
         }
-        pool.shutdownNow();
         pool = new ForkJoinPool(threadsNumber);
         startAll();
 
@@ -148,32 +152,43 @@ public class Downloader {
         } while (bc != -1);
     }
 
-    private void downloadPart(Download download, long from, Long to) throws IOException {
-        HttpGet request = new HttpGet(download.getUrl());
-        request.addHeader("Range", "bytes=" + from + '-' + (to == null ? "" : to.toString()));
+    private void downloadPart(Download download, long from, Long to) throws DownloadFailedException {
+        int tryCount = 0;
+        while (true) {
+            try {
+                HttpGet request = new HttpGet(download.getUrl());
+                request.addHeader("Range", "bytes=" + from + '-' + (to == null ? "" : to.toString()));
 
-        CloseableHttpResponse response = (CloseableHttpResponse) client.execute(request, new BasicHttpContext());
-        try {
-            HttpEntity entity = response.getEntity();
-            // todo long contentLength = entity.getContentLength();
-            InputStream content = entity.getContent();
+                CloseableHttpResponse response = (CloseableHttpResponse) client.execute(request, new BasicHttpContext());
+                try {
+                    HttpEntity entity = response.getEntity();
+                    // todo long contentLength = entity.getContentLength();
+                    InputStream content = entity.getContent();
 
-            byte[] buffer = new byte[bufferSize];
-            long offset = from;
-            int bc;
-            do {
-                bc = content.read(buffer);
-                if (bc > 0) {
-                    try (RandomAccessFile raf = new RandomAccessFile(download.getFilename(), "rw")) {
-                        raf.seek(offset);
-                        raf.write(buffer, 0, bc);
-                        addProgress(download, offset, bc);
-                        offset += bc;
-                    }
+                    byte[] buffer = new byte[bufferSize];
+                    long offset = from;
+                    int bc;
+                    do {
+                        bc = content.read(buffer);
+                        if (bc > 0) {
+                            try (RandomAccessFile raf = new RandomAccessFile(download.getFilename(), "rw")) {
+                                raf.seek(offset);
+                                raf.write(buffer, 0, bc);
+                                addProgress(download, offset, bc);
+                                offset += bc;
+                            }
+                        }
+                    } while (bc != -1);
+                    return;
+                } finally {
+                    response.close();
                 }
-            } while (bc != -1);
-        } finally {
-            response.close();
+            } catch (IOException e) {
+                if (tryCount++ < maxRetryCount) {
+                    continue;
+                }
+                throw new DownloadFailedException(e);
+            }
         }
     }
 
@@ -268,8 +283,8 @@ public class Downloader {
                 if (to - from <= minPartSize) {
                     try {
                         downloadPart(download, from, to);
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
+                    } catch (DownloadFailedException e) {
+                        setDownloadState(download, Download.State.Error);
                     }
                     return;
                 }

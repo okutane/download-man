@@ -14,7 +14,7 @@ import org.apache.http.protocol.HttpContext;
 import java.io.IOException;
 
 /**
- * Created by okutane on 10.02.2016.
+ * @author <a href="mailto:dmitriy.matveev@odnoklassniki.ru">Dmitriy Matveev</a>
  */
 public class TestHttpClient implements HttpClient {
     @Override
@@ -34,7 +34,7 @@ public class TestHttpClient implements HttpClient {
 
     @Override
     public HttpResponse execute(HttpUriRequest httpUriRequest, HttpContext httpContext) throws IOException, ClientProtocolException {
-        return null;
+        return execute(httpUriRequest);
     }
 
     @Override
