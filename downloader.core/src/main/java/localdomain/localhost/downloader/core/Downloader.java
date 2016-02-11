@@ -42,6 +42,26 @@ public class Downloader {
 
     ForkJoinPool pool = new ForkJoinPool(threadsNumber);
 
+    public Downloader(File downloadDirectory) {
+        this(downloadDirectory, HttpClients.createDefault());
+    }
+
+    Downloader(File downloadDirectory, HttpClient httpClient) {
+        this.downloadDirectory = downloadDirectory;
+        this.client = httpClient;
+    }
+
+    public void setThreadsNumber(int threadsNumber) {
+        if (threadsNumber == this.threadsNumber) {
+            return;
+        }
+        pool.shutdownNow();
+        pool = new ForkJoinPool(threadsNumber);
+        startAll();
+
+        this.threadsNumber = threadsNumber;
+    }
+
     private void setDownloadState(Download download, Download.State state) {
         download.setState(state);
         handler.downloadStateChanged(download);
@@ -50,15 +70,6 @@ public class Downloader {
     private void addProgress(Download download, long offset, int length) {
         download.addProgress(offset, length);
         handler.progressChanged(download);
-    }
-
-    public Downloader(File downloadDirectory) {
-        this(downloadDirectory, HttpClients.createDefault());
-    }
-
-    Downloader(File downloadDirectory, HttpClient httpClient) {
-        this.downloadDirectory = downloadDirectory;
-        this.client = httpClient;
     }
 
     public void setHandler(DownloaderEventHandler handler) {
@@ -78,12 +89,7 @@ public class Downloader {
     }
 
     public void startAll() {
-        for (Download download : downloads) {
-            switch (download.getState()) {
-                case New:
-                    pool.execute(new DownloadJob(download));
-            }
-        }
+        downloads.stream().filter(d -> d.getState() != Download.State.Error).forEach(d -> pool.execute(new DownloadJob(d)));
     }
 
     private void prepare(Download download) {
@@ -119,9 +125,7 @@ public class Downloader {
     }
 
     private void download(Download download) throws IOException {
-
         HttpGet request = new HttpGet(download.getUrl());
-
         HttpResponse response = client.execute(request);
 
         HttpEntity entity = response.getEntity();
@@ -142,15 +146,11 @@ public class Downloader {
                 }
             }
         } while (bc != -1);
-
-        if (download.isComplete()) {
-            setDownloadState(download, Download.State.Finished);
-        }
     }
 
     private void downloadPart(Download download, long from, Long to) throws IOException {
         HttpGet request = new HttpGet(download.getUrl());
-        request.addHeader("Range", "bytes=" + from + '-' + (to == null ? "" : to.toString())); // expect 206
+        request.addHeader("Range", "bytes=" + from + '-' + (to == null ? "" : to.toString()));
 
         CloseableHttpResponse response = (CloseableHttpResponse) client.execute(request, new BasicHttpContext());
         try {
@@ -172,10 +172,6 @@ public class Downloader {
                     }
                 }
             } while (bc != -1);
-
-            if (download.isComplete()) {
-                setDownloadState(download, Download.State.Finished);
-            }
         } finally {
             response.close();
         }
@@ -224,23 +220,38 @@ public class Downloader {
 
         @Override
         protected void compute() {
-            prepare(download);
-
-            if (download.getState() == Download.State.Error) {
-                return;
-            }
-
-            if (download.getSize() == UNKNOWN_SIZE) {
-                // size is unknown, download sequentially.
-                try {
-                    download(download);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
+            try {
+                if (download.getState() == Download.State.Ready && download.getSize() != UNKNOWN_SIZE) {
+                    List<DownloadPartJob> jobs = new ArrayList<>();
+                    for (MultipartProgress.ProgressPart missingPart : download.getMissingParts()) {
+                        jobs.add(new DownloadPartJob(missingPart.getFrom(), missingPart.getTo()));
+                    }
+                    invokeAll(jobs.toArray(new DownloadPartJob[0]));
+                    return;
                 }
-                return;
-            }
 
-            invokeAll(new DownloadPartJob(0, download.getSize()));
+                prepare(download);
+
+                if (download.getState() == Download.State.Error) {
+                    return;
+                }
+
+                if (download.getSize() == UNKNOWN_SIZE) {
+                    // size is unknown, download sequentially.
+                    try {
+                        download(download);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                    return;
+                }
+
+                invokeAll(new DownloadPartJob(0, download.getSize()));
+            } finally {
+                if (download.isComplete()) {
+                    setDownloadState(download, Download.State.Finished);
+                }
+            }
         }
 
         private class DownloadPartJob extends RecursiveAction {

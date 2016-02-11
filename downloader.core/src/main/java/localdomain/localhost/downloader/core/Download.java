@@ -1,5 +1,7 @@
 package localdomain.localhost.downloader.core;
 
+import java.util.List;
+
 /**
  * The primary entity in Downloader.
  *
@@ -51,6 +53,10 @@ public class Download {
 
     public Boolean isComplete() {
         return progress == null ? null : progress.isComplete();
+    }
+
+    public List<MultipartProgress.ProgressPart> getMissingParts() {
+        return progress.getMissingParts();
     }
 
     public void setSize(int size) {
