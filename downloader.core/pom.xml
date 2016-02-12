@@ -6,6 +6,7 @@
 
     <groupId>groupId</groupId>
     <artifactId>downloader.core</artifactId>
+    <name>Downloader Library</name>
     <version>1.0</version>
 
     <build>

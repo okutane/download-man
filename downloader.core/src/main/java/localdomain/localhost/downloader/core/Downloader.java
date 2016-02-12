@@ -29,27 +29,29 @@ import java.util.concurrent.RecursiveAction;
 import java.util.concurrent.TimeUnit;
 
 /**
+ * Class to be used for downloads. Supports queues of several files. Multiple threads are used for downloads.
  * @author <a href="mailto:dmitriy.matveev@odnoklassniki.ru">Dmitriy Matveev</a>
  */
 public class Downloader {
-    public static final int UNKNOWN_SIZE = -1;
-    private static Logger logger = LoggerFactory.getLogger(Downloader.class);
+    private static Logger LOGGER = LoggerFactory.getLogger(Downloader.class);
+    private static int MAX_RETRY_COUNT = 5;
+    private static int BUFFER_SIZE = 4096 * 10;
+    private static long MIN_PART_SIZE = 10 * 1024 * 1024;
+
     private final File downloadDirectory;
     private final HttpClient client;
-
     private final List<Download> downloads = new ArrayList<>();
-
     private boolean running = false;
-    private int maxRetryCount = 5;
-    private int bufferSize = 4096 * 10;
-    private long minPartSize = 10 * 1024 * 1024;
     private int threadsNumber;
-
     private DownloaderEventHandler handler = new DownloaderEventHandler() {
     };
 
     ForkJoinPool pool;
 
+    /**
+     * Initializes instance.
+     * @param downloadDirectory Directory to save files in.
+     */
     public Downloader(File downloadDirectory) {
         this(downloadDirectory, HttpClients.createDefault());
     }
@@ -60,11 +62,15 @@ public class Downloader {
         setThreadsNumber(Runtime.getRuntime().availableProcessors());
     }
 
+    /**
+     * Resizes internal workers pool.
+     * @param threadsNumber
+     */
     public void setThreadsNumber(int threadsNumber) {
+        if (threadsNumber == this.threadsNumber) {
+            return;
+        }
         if (pool != null) {
-            if (threadsNumber == this.threadsNumber) {
-                return;
-            }
             pool.shutdownNow();
         }
         pool = new ForkJoinPool(threadsNumber);
@@ -74,8 +80,8 @@ public class Downloader {
     }
 
     private void setDownloadState(Download download, Download.State state) {
-        if (logger.isInfoEnabled()) {
-            logger.info(download.getUrl() + " -> " + state);
+        if (LOGGER.isInfoEnabled()) {
+            LOGGER.info(download.getUrl() + " -> " + state);
         }
         download.setState(state);
         handler.downloadStateChanged(download);
@@ -86,10 +92,21 @@ public class Downloader {
         handler.progressChanged(download);
     }
 
+    /**
+     * Sets {@link DownloaderEventHandler} to be used then various download related events occur.
+     */
     public void setHandler(DownloaderEventHandler handler) {
         this.handler = handler;
     }
 
+    /**
+     * Adds new download. If this instance is already running then newly created download
+     * will be added to processed queue right away.
+     *
+     * @param url file to download.
+     * @return
+     * @throws DownloadCreationException when uri can't be properly parsed.
+     */
     public Download createDownload(String url) throws DownloadCreationException {
         // validation
         try {
@@ -142,7 +159,7 @@ public class Downloader {
             String filename = evaluateFilename(request, response);
 
             Header contentLengthHeader = response.getFirstHeader("Content-Length");
-            int contentLength = contentLengthHeader != null ? Integer.parseInt(contentLengthHeader.getValue()) : UNKNOWN_SIZE;
+            int contentLength = contentLengthHeader != null ? Integer.parseInt(contentLengthHeader.getValue()) : Download.UNKNOWN_SIZE;
 
             synchronized (download) {
                 String absolute = new File(downloadDirectory, filename).getAbsolutePath();
@@ -156,8 +173,7 @@ public class Downloader {
                 setDownloadState(download, Download.State.Ready);
             }
         } catch (IOException e) {
-            logger.warn(download.getUrl(), e);
-            download.setMessage(e.getLocalizedMessage());
+            LOGGER.warn(download.getUrl(), e);
             setDownloadState(download, Download.State.Error);
         }
     }
@@ -173,7 +189,7 @@ public class Downloader {
                 // todo long contentLength = entity.getContentLength();
                 InputStream content = entity.getContent();
 
-                byte[] buffer = new byte[bufferSize];
+                byte[] buffer = new byte[BUFFER_SIZE];
                 int offset = 0;
                 int bc;
                 do {
@@ -191,7 +207,7 @@ public class Downloader {
                 // probably pool resize
                 return;
             } catch (IOException e) {
-                if (tryCount++ < maxRetryCount) {
+                if (tryCount++ < MAX_RETRY_COUNT) {
                     continue;
                 }
                 throw new DownloadFailedException(e);
@@ -212,7 +228,7 @@ public class Downloader {
                     // todo long contentLength = entity.getContentLength();
                     InputStream content = entity.getContent();
 
-                    byte[] buffer = new byte[bufferSize];
+                    byte[] buffer = new byte[BUFFER_SIZE];
                     long offset = from;
                     int bc;
                     do {
@@ -234,7 +250,7 @@ public class Downloader {
                 // probably pool resize
                 return;
             } catch (IOException e) {
-                if (tryCount++ < maxRetryCount) {
+                if (tryCount++ < MAX_RETRY_COUNT) {
                     continue;
                 }
                 throw new DownloadFailedException(e);
@@ -290,7 +306,7 @@ public class Downloader {
         @Override
         protected void compute() {
             try {
-                if (download.getState() == Download.State.Ready && download.getSize() != UNKNOWN_SIZE) {
+                if (download.getState() == Download.State.Ready && download.getSize() != Download.UNKNOWN_SIZE) {
                     List<DownloadPartJob> jobs = new ArrayList<>();
                     for (MultipartProgress.ProgressPart missingPart : download.getMissingParts()) {
                         jobs.add(new DownloadPartJob(missingPart.getFrom(), missingPart.getTo()));
@@ -305,12 +321,12 @@ public class Downloader {
                     return;
                 }
 
-                if (download.getSize() == UNKNOWN_SIZE) {
+                if (download.getSize() == Download.UNKNOWN_SIZE) {
                     // size is unknown, download sequentially.
                     try {
                         download(download);
                     } catch (DownloadFailedException e) {
-                        logger.warn(download.getUrl(), e);
+                        LOGGER.warn(download.getUrl(), e);
                         setDownloadState(download, Download.State.Error);
                     }
                     return;
@@ -335,14 +351,14 @@ public class Downloader {
 
             @Override
             protected void compute() {
-                if (to - from <= minPartSize) {
+                if (to - from <= MIN_PART_SIZE) {
                     try {
                         downloadPart(download, from, to);
-                        if (logger.isInfoEnabled()) {
-                            logger.info(download.getUrl() + ": " + from + "-" + to + " downloaded.");
+                        if (LOGGER.isInfoEnabled()) {
+                            LOGGER.info(download.getUrl() + ": " + from + "-" + to + " downloaded.");
                         }
                     } catch (DownloadFailedException e) {
-                        logger.warn(download.getUrl(), e);
+                        LOGGER.warn(download.getUrl(), e);
                         setDownloadState(download, Download.State.Error);
                     }
                     return;
